@@ -3,7 +3,7 @@
   "name": "YT TimeSaver",
   "version": "1.0",
   "description": "Automatically saves and restores your YouTube video position.",
-  "permissions": ["storage", "tabs"],
+  "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*"],
