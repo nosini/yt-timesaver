@@ -31,7 +31,7 @@
       [storageKey(currentVideoId)]: {
         videoId:   currentVideoId,
         timestamp: Math.floor(video.currentTime),
-        duration:  Math.floor(video.duration) || 0,
+        duration:  Number.isFinite(video.duration) ? Math.floor(video.duration) : 0,
         title:     document.title.replace(' - YouTube', '').trim(),
         url:       `https://www.youtube.com/watch?v=${currentVideoId}`,
         savedAt:   Date.now(),

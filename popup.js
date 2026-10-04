@@ -17,6 +17,24 @@ function timeAgo(ts) {
   return `${days}d ago`;
 }
 
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// Saved entries are only shown if they have the shape content.js writes
+function isEntry(d) {
+  return !!d && typeof d === 'object'
+    && typeof d.videoId === 'string' && /^[A-Za-z0-9_-]{11}$/.test(d.videoId)
+    && Number.isInteger(d.timestamp) && d.timestamp >= 0
+    // Live streams were saved with an infinite duration, which storage keeps as null
+    && (d.duration == null || (Number.isInteger(d.duration) && d.duration >= 0))
+    && typeof d.title === 'string'
+    && Number.isFinite(d.savedAt);
+}
+
 function render(items) {
   const list = document.getElementById('list');
 
@@ -32,27 +50,42 @@ function render(items) {
   // Sort by most recently saved
   items.sort((a, b) => b.savedAt - a.savedAt);
 
-  list.innerHTML = items.map(d => {
+  // Titles come from the page, so everything is set as text, never as markup
+  list.replaceChildren(...items.map(d => {
     const pct = d.duration > 0 ? Math.round((d.timestamp / d.duration) * 100) : 0;
-    const thumb = `https://img.youtube.com/vi/${d.videoId}/mqdefault.jpg`;
-    return `
-      <a class="item" href="${d.url}&t=${d.timestamp}s" target="_blank" data-key="yt_ts_${d.videoId}">
-        <div class="thumb">
-          <img src="${thumb}" onerror="this.style.display='none'" alt="">
-          <div class="progress-bar" style="width:${pct}%"></div>
-        </div>
-        <div class="info">
-          <div class="title" title="${d.title}">${d.title}</div>
-          <div class="meta">
-            <span class="ts-badge">${formatTime(d.timestamp)}</span>
-            ${d.duration ? `/ ${formatTime(d.duration)}` : ''}
-            · ${timeAgo(d.savedAt)}
-          </div>
-        </div>
-        <button class="delete-btn" title="Remove" data-key="yt_ts_${d.videoId}">✕</button>
-      </a>
-    `;
-  }).join('');
+    const key = `yt_ts_${d.videoId}`;
+
+    const item = el('a', 'item');
+    item.href = `https://www.youtube.com/watch?v=${d.videoId}&t=${d.timestamp}s`;
+    item.target = '_blank';
+    item.dataset.key = key;
+
+    const thumb = el('div', 'thumb');
+    const img = el('img');
+    img.src = `https://img.youtube.com/vi/${d.videoId}/mqdefault.jpg`;
+    img.alt = '';
+    img.addEventListener('error', () => { img.style.display = 'none'; });
+    const progress = el('div', 'progress-bar');
+    progress.style.width = `${Math.min(pct, 100)}%`;
+    thumb.append(img, progress);
+
+    const title = el('div', 'title', d.title);
+    title.title = d.title;
+    const meta = el('div', 'meta');
+    meta.append(
+      el('span', 'ts-badge', formatTime(d.timestamp)),
+      `${d.duration ? ` / ${formatTime(d.duration)}` : ''} · ${timeAgo(d.savedAt)}`,
+    );
+    const info = el('div', 'info');
+    info.append(title, meta);
+
+    const del = el('button', 'delete-btn', '✕');
+    del.title = 'Remove';
+    del.dataset.key = key;
+
+    item.append(thumb, info, del);
+    return item;
+  }));
 
   // Delete buttons
   list.querySelectorAll('.delete-btn').forEach(btn => {
@@ -68,7 +101,7 @@ function render(items) {
 function loadItems() {
   chrome.storage.local.get(null, (all) => {
     const items = Object.entries(all)
-      .filter(([k]) => k.startsWith('yt_ts_'))
+      .filter(([k, v]) => k === `yt_ts_${v?.videoId}` && isEntry(v))
       .map(([, v]) => v);
     render(items);
   });
