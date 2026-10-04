@@ -70,7 +70,7 @@ jobs:
           EXTENSION_KEY_B64: ${{ secrets.EXTENSION_KEY_B64 }}
           # Public ID of the signed releases; a key that gives another ID
           # would publish a separate extension with none of the saved positions.
-          EXPECTED_EXTENSION_ID: ""
+          EXPECTED_EXTENSION_ID: cbfnfcfageekoohneabkpoijppedpgli
         run: |
           set -euo pipefail
           if [[ -z "$EXPECTED_EXTENSION_ID" ]]; then
