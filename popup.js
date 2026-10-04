@@ -35,6 +35,13 @@ function isEntry(d) {
     && Number.isFinite(d.savedAt);
 }
 
+// The valid saved positions among everything in storage
+function savedEntries(all) {
+  return Object.entries(all)
+    .filter(([k, v]) => k === `yt_ts_${v?.videoId}` && isEntry(v))
+    .map(([, v]) => v);
+}
+
 function render(items) {
   const list = document.getElementById('list');
 
@@ -100,10 +107,7 @@ function render(items) {
 
 function loadItems() {
   chrome.storage.local.get(null, (all) => {
-    const items = Object.entries(all)
-      .filter(([k, v]) => k === `yt_ts_${v?.videoId}` && isEntry(v))
-      .map(([, v]) => v);
-    render(items);
+    render(savedEntries(all));
   });
 }
 
@@ -111,6 +115,85 @@ document.getElementById('clearAll').addEventListener('click', () => {
   chrome.storage.local.get(null, (all) => {
     const keys = Object.keys(all).filter(k => k.startsWith('yt_ts_'));
     chrome.storage.local.remove(keys, loadItems);
+  });
+});
+
+function showStatus(text) {
+  const status = document.getElementById('status');
+  status.textContent = text;
+  status.hidden = false;
+}
+
+document.getElementById('export').addEventListener('click', () => {
+  chrome.storage.local.get(null, (all) => {
+    const entries = savedEntries(all);
+    const json = JSON.stringify({ format: 'yt-timesaver', version: 1, entries }, null, 2);
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    link.download = `yt-timesaver-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    showStatus(`Exported ${entries.length} saved position${entries.length === 1 ? '' : 's'}.`);
+  });
+});
+
+// Opening a file chooser closes the popup on most platforms, so importing
+// happens in a tab showing this same page.
+const inTab = new URLSearchParams(location.search).has('tab');
+if (inTab) {
+  document.body.classList.add('in-tab');
+  showStatus('Choose Import to pick an exported file.');
+}
+
+document.getElementById('import').addEventListener('click', () => {
+  if (inTab) {
+    document.getElementById('importFile').click();
+  } else {
+    chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?tab') });
+    window.close();
+  }
+});
+
+document.getElementById('importFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+
+  let entries;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data?.format !== 'yt-timesaver' || !Array.isArray(data.entries)) throw new Error();
+    entries = data.entries;
+  } catch {
+    showStatus(`${file.name} is not a YT TimeSaver export.`);
+    return;
+  }
+
+  chrome.storage.local.get(null, (all) => {
+    // Keep whichever copy of a video's position was saved last
+    const updates = {};
+    let skipped = 0;
+    for (const d of entries) {
+      if (!isEntry(d)) { skipped++; continue; }
+      const key = `yt_ts_${d.videoId}`;
+      const current = updates[key] ?? all[key];
+      if (isEntry(current) && current.savedAt >= d.savedAt) continue;
+      updates[key] = {
+        videoId:   d.videoId,
+        timestamp: d.timestamp,
+        duration:  d.duration ?? 0,
+        title:     d.title,
+        url:       `https://www.youtube.com/watch?v=${d.videoId}`,
+        savedAt:   d.savedAt,
+      };
+    }
+    chrome.storage.local.set(updates, () => {
+      const added = Object.keys(updates).length;
+      showStatus(`Imported ${added} saved position${added === 1 ? '' : 's'}`
+        + (entries.length - skipped - added ? `, ${entries.length - skipped - added} already up to date` : '')
+        + (skipped ? `, ${skipped} invalid` : '') + '.');
+      loadItems();
+    });
   });
 });
 

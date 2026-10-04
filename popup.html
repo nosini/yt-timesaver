@@ -58,6 +58,19 @@
       transition: all 0.15s;
     }
 
+    .actions { display: flex; gap: 6px; }
+
+    .status {
+      padding: 8px 16px;
+      border-bottom: 1px solid #222;
+      color: #aaa;
+      font-size: 11px;
+    }
+
+    /* Opened in a tab for importing, where the file chooser can't close it */
+    html:has(body.in-tab) { background: #0f0f0f; }
+    body.in-tab { margin: 40px auto; border: 1px solid #222; border-radius: 8px; }
+
     .clear-btn:hover { background: #1e1e1e; color: #ccc; border-color: #555; }
 
     .list {
@@ -172,8 +185,15 @@
       <div class="logo-icon">▶</div>
       YT TimeSaver
     </div>
-    <button class="clear-btn" id="clearAll">Clear all</button>
+    <div class="actions">
+      <button class="clear-btn" id="export" title="Download saved positions as a JSON file">Export</button>
+      <button class="clear-btn" id="import" title="Add saved positions from an exported file">Import</button>
+      <button class="clear-btn" id="clearAll">Clear all</button>
+    </div>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
   </header>
+
+  <div class="status" id="status" hidden></div>
 
   <div class="list" id="list">
     <div class="empty">
