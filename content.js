@@ -1,10 +1,17 @@
 (() => {
+  // The main player's <video>. YouTube keeps this element across in-app
+  // navigation and loads each new video into it.
+  const PLAYER_VIDEO = '#movie_player video';
+  const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
   let video = null;
-  let saveInterval = null;
-  let currentVideoId = null;
+  let currentVideoId = null;   // video whose position is being saved, if any
+  let navigating = false;
+  let loadedSinceNavigation = false;
 
   function getVideoId() {
-    return new URLSearchParams(window.location.search).get('v');
+    const id = new URLSearchParams(window.location.search).get('v');
+    return id && VIDEO_ID.test(id) ? id : null;
   }
 
   function storageKey(videoId) {
@@ -34,49 +41,52 @@
 
   function restoreTimestamp() {
     const videoId = currentVideoId;
-    if (!videoId || !video) return;
+    const v = video;
+    if (!videoId || !v) return;
 
     chrome.storage.local.get(storageKey(videoId), (result) => {
       const data = result[storageKey(videoId)];
       if (!data || data.timestamp < 5) return;
+      // Another video may have loaded while storage was read
+      if (currentVideoId !== videoId || video !== v) return;
       // Only seek if the video hasn't already progressed
-      if (video.currentTime > 10) return;
-      video.currentTime = data.timestamp;
+      if (v.currentTime > 10) return;
+      v.currentTime = data.timestamp;
     });
   }
 
-  function attachToVideo(v) {
-    video = v;
-
-    if (video.readyState >= 1) {
-      restoreTimestamp();
-    } else {
-      video.addEventListener('loadedmetadata', restoreTimestamp, { once: true });
-    }
-
-    clearInterval(saveInterval);
-    saveInterval = setInterval(saveTimestamp, 5000);
+  // Start saving the video named in the URL, now that the player holds it.
+  function trackLoadedVideo() {
+    currentVideoId = getVideoId();
+    restoreTimestamp();
   }
 
-  function onNavigation() {
-    const videoId = getVideoId();
-    if (!videoId || videoId === currentVideoId) return;
+  // Media events don't bubble, so listen in the capture phase. This also
+  // catches a player that is created after this script runs.
+  document.addEventListener('loadedmetadata', (e) => {
+    if (!(e.target instanceof HTMLVideoElement) || !e.target.matches(PLAYER_VIDEO)) return;
+    video = e.target;
+    loadedSinceNavigation = true;
+    // Until the navigation finishes, the URL may still name the previous video
+    currentVideoId = null;
+    if (!navigating) trackLoadedVideo();
+  }, true);
 
-    currentVideoId = videoId;
-    video = null;
+  // YouTube is a SPA and fires these on document for in-app navigation.
+  // (Wrapping history.pushState wouldn't work: content scripts run in an
+  // isolated world, so YouTube's own calls never reach the wrapper.)
+  document.addEventListener('yt-navigate-start', () => {
+    saveTimestamp();
+    navigating = true;
+    loadedSinceNavigation = false;
+  });
 
-    // Poll until the video element appears (YouTube SPA swaps it out)
-    const poll = setInterval(() => {
-      const v = document.querySelector('video');
-      if (v) {
-        clearInterval(poll);
-        attachToVideo(v);
-      }
-    }, 200);
-
-    // Give up after 10s
-    setTimeout(() => clearInterval(poll), 10000);
-  }
+  document.addEventListener('yt-navigate-finish', () => {
+    navigating = false;
+    // If no new video loaded, the player still holds the previous one (the
+    // miniplayer, or a video that loads later), so keep saving it as is.
+    if (loadedSinceNavigation) trackLoadedVideo();
+  });
 
   // Save on tab close / navigation away
   window.addEventListener('pagehide', saveTimestamp);
@@ -84,13 +94,12 @@
     if (document.visibilityState === 'hidden') saveTimestamp();
   });
 
-  // YouTube is a SPA — intercept pushState/replaceState to catch navigation
-  const _push    = history.pushState.bind(history);
-  const _replace = history.replaceState.bind(history);
-  history.pushState    = (...a) => { _push(...a);    onNavigation(); };
-  history.replaceState = (...a) => { _replace(...a); onNavigation(); };
-  window.addEventListener('popstate', onNavigation);
+  setInterval(saveTimestamp, 5000);
 
-  // Initial load
-  onNavigation();
+  // Initial load: the player may have loaded its video before this script ran
+  const v = document.querySelector(PLAYER_VIDEO);
+  if (v && v.readyState >= 1) {
+    video = v;
+    trackLoadedVideo();
+  }
 })();
