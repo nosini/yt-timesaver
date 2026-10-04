@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "YT TimeSaver",
+  "version": "1.0",
+  "description": "Automatically saves and restores your YouTube video position.",
+  "permissions": ["storage", "tabs"],
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "YT TimeSaver"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}

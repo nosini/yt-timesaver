@@ -1,0 +1,10 @@
+# Signing key: never commit it, it determines the extension ID
+*.pem
+
+# Packed extension output
+*.crx
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
